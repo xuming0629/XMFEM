@@ -1,0 +1,24 @@
+#ifdef LARANGE_FEM_SPACE_H_
+#define LARANGE_FEM_SPACE_H_
+
+// 实现一个基于拉格朗日插值法的有限元空间类
+
+// #include <Eigen/Core>
+// #include <Eigen/Sparse>
+// #include <Eigen/IterativeLinearSolvers>
+#include <iostream>
+#include <vector>
+
+
+#include "TriangularMesh.h"
+
+
+
+class LarangeFEMSpace {
+    public:
+
+};
+
+
+
+#endif // LARANGE_FEM_SPACE_H_

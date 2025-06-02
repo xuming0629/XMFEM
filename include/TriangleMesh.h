@@ -1,5 +1,15 @@
+/*******************************************************
+ * @FileName      : TriangleMesh.h
+ * @Time          : 2025-06-02 23:32:59
+ * @Author        : XuMing
+ * @Email         : 920972751@qq.com
+ * @Description   : 三角形网格类定义
+ * @Copyright     : XuMing. All Rights Reserved.
+ *******************************************************/
+
 #ifndef TRIANGLE_MESH_H
 #define TRIANGLE_MESH_H
+
 
 #include "MeshBase.h"
 #include <cmath>
@@ -7,13 +17,37 @@
 #include <stdexcept>
 #include <iostream>
 
-#include "Eigen/Dense"
 #include "LogManager.h"
 
 // 派生类：三角形网格
 class TriangleMesh : public MeshBase
 {
 public:
+    // 构造函数：默认构造一个空网格
+    TriangleMesh() = default;
+
+    // 构造函数：通过节点和单元直接构建网格（适用于非结构网格）
+    TriangleMesh(const std::vector<Node> &input_nodes, const std::vector<Cell> &input_cells)
+    {
+        // 检查单元是否全是三角形
+        for (const auto &cell : input_cells)
+        {
+            if (cell.node_ids.size() != 3)
+            {
+                throw std::invalid_argument("All cells must have exactly 3 node IDs for a triangle mesh.");
+            }
+        }
+
+        nodes = input_nodes;
+        cells = input_cells;
+
+        // 可以在这里按需要排序单元节点
+        for (auto &cell : cells)
+        {
+            sortCellNodes(cell);
+        }
+    }
+
     // 生成规则网格节点和单元
     void buildMesh(int nx, int ny, const std::vector<double> &box)
     {
@@ -28,17 +62,18 @@ public:
         double dx = (xmax - xmin) / nx;
         double dy = (ymax - ymin) / ny;
 
-        int id = 1;
+        int id = 0;
         nodes.clear();
         cells.clear();
 
         // 生成节点
+
         for (int j = 0; j <= ny; ++j)
         {
             for (int i = 0; i <= nx; ++i)
             {
                 Node n;
-                n.id = id++;
+                n.id = id++; // 从0开始
                 n.x = xmin + i * dx;
                 n.y = ymin + j * dy;
                 nodes.push_back(n);
@@ -50,7 +85,7 @@ public:
         {
             for (int i = 0; i < nx; ++i)
             {
-                int n1 = j * (nx + 1) + i + 1;
+                int n1 = j * (nx + 1) + i ;
                 int n2 = n1 + 1;
                 int n3 = n1 + (nx + 1);
                 int n4 = n3 + 1;
@@ -70,7 +105,7 @@ public:
         }
     }
 
-    // 给定一个 Cell，按逆时针顺序排序，并确保第一个点是直角点
+    
     void sortCellNodes(Cell &cell)
     {
         if (cell.node_ids.size() != 3)
@@ -79,78 +114,64 @@ public:
             throw std::runtime_error("A triangle must have 3 nodes");
         }
 
-        // 获取节点对象
+        // 取出3个节点
         Node n0 = getNodeById(cell.node_ids[0]);
         Node n1 = getNodeById(cell.node_ids[1]);
         Node n2 = getNodeById(cell.node_ids[2]);
 
-        std::vector<std::pair<Node, int>> nodes_with_ids = {
-            {n0, cell.node_ids[0]},
-            {n1, cell.node_ids[1]},
-            {n2, cell.node_ids[2]}};
-
-        // 找到直角点（两条边垂直）
-        int right_angle_index = -1;
-        for (int i = 0; i < 3; ++i)
+        // 计算叉积判断是否为逆时针
+        auto cross = [](const Node &a, const Node &b, const Node &c) -> double
         {
-            Node a = nodes_with_ids[i].first;
-            Node b = nodes_with_ids[(i + 1) % 3].first;
-            Node c = nodes_with_ids[(i + 2) % 3].first;
+            return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+        };
 
-            double dx1 = b.x - a.x;
-            double dy1 = b.y - a.y;
-            double dx2 = c.x - a.x;
-            double dy2 = c.y - a.y;
+        double cross_product = cross(n0, n1, n2);
 
-            double dot_product = dx1 * dx2 + dy1 * dy2;
-
-            if (std::abs(dot_product) < 1e-8)
-            {
-                right_angle_index = i;
-                break;
-            }
-        }
-
-        if (right_angle_index == -1)
+        if (cross_product > 0)
         {
-            // 没找到直角点，就默认不排序
-            LOG_ERROR("No right angle found in cell" + std::to_string(cell.node_ids[0]) + ", " +
-                      std::to_string(cell.node_ids[1]) + ", " + std::to_string(cell.node_ids[2]));
-            std::cerr << "Warning: No right angle found in cell " << cell.node_ids[0] << ", " << cell.node_ids[1] << ", " << cell.node_ids[2] << std::endl;
-            return;
+            // 已经是逆时针顺序，不用改动
+            cell.node_ids = {n0.id, n1.id, n2.id};
         }
-
-        // 以直角点开头排好顺序，逆时针
-        std::vector<int> ordered_ids = {
-            nodes_with_ids[right_angle_index].second,
-            nodes_with_ids[(right_angle_index + 1) % 3].second,
-            nodes_with_ids[(right_angle_index + 2) % 3].second};
-
-        // 判断是否逆时针（通过叉积）
-        Node A = getNodeById(ordered_ids[0]);
-        Node B = getNodeById(ordered_ids[1]);
-        Node C = getNodeById(ordered_ids[2]);
-
-        double cross_product = (B.x - A.x) * (C.y - A.y) - (B.y - A.y) * (C.x - A.x);
-        if (cross_product < 0)
+        else if (cross_product < 0)
         {
-            std::swap(ordered_ids[1], ordered_ids[2]);
+            // 顺时针，交换最后两个点，变成逆时针
+            cell.node_ids = {n0.id, n2.id, n1.id};
         }
-
-        cell.node_ids = ordered_ids;
+        else
+        {
+            // 三点共线（退化三角形），不做排序，或者抛异常
+            LOG_ERROR("Degenerate triangle with colinear points: " +
+                      std::to_string(n0.id) + ", " +
+                      std::to_string(n1.id) + ", " +
+                      std::to_string(n2.id));
+            std::cerr << "Warning: Degenerate triangle with colinear points: "
+                      << n0.id << ", " << n1.id << ", " << n2.id << std::endl;
+            // 保持原顺序
+        }
     }
 
+    // 获取指定节点
+    Node getNodeById(int id) const
+    {
+        for (const auto &n : nodes)
+        {
+            if (n.id == id)
+                return n;
+        }
+        throw std::runtime_error("Node ID not found");
+    }
+    // 根据 ID 查找并返回节点(按值返回
+
+    // 根据 ID 查找并返回节点在 vector 中的索引
     int getNodeIndexById(int id) const
     {
         for (size_t i = 0; i < nodes.size(); ++i)
         {
             if (nodes[i].id == id)
-                return i;
+                return static_cast<int>(i);
         }
         throw std::runtime_error("Node ID not found");
     }
-
-
 };
 
 #endif // TRIANGLE_MESH_H
