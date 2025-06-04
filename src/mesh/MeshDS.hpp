@@ -1,77 +1,110 @@
-#ifndef MESHDS_HPP
-#define MESHDS_HPP
+#ifndef MESH_DS_HPP_
+#define MESH_DS_HPP_
 
 #include <iostream>
 #include <vector>
+#include <string>
 #include <map>
-
-namespace XMFEM {
-
-using Index = std::size_t;
-using Tensor = std::vector<std::vector<Index>>;
+#include <stdexcept>
+#include <algorithm>
+#include <set>
 
 class MeshDS {
 public:
-    MeshDS(int topDim);
+    using Node = std::vector<std::vector<double>>;      // 节点坐标列表，二维坐标或三维坐标
+    using Entity = std::vector<std::vector<int>>;       // 单元、边、面等索引列表
 
-    const Tensor& get_entity(int etype) const;
+public:
+    explicit MeshDS(int TD_) : TD(TD_) {}
 
-    const std::vector<Index>& get_entity(int etype, int index) const;
-    const std::vector<Index>& get_entity(const std::string& etype, int index) const;
+    int top_dimension() const { return TD; }
 
-
-    void set_entity(int etype, const Tensor& entity);
-    
-
-     void clear();
-
-    int top_dimension() const;
-    size_t count(int etype) const;
-
-    
-   std::vector<std::pair<Index, Index>> edge_to_node() const;
-    std::vector<std::vector<Index>> face_to_node() const;
-    std::vector<std::vector<Index>> cell_to_edge() const;
-
-    std::vector<Index> node_to_cell(Index node) const;
-
-    void print_entity(int etype) const;
-    void print_summary() const;
-
-    int number_of_nodes() const { return count(0); }
-    int number_of_edges() const { return count(1); }
-    int number_of_faces() const { return count(2); }
-    int number_of_cells() const { return count(3); }
-
-
-    int number_of(const std::string& etype) const {
-        return count(estr2dim(etype));
+    // 获取实体（节点除外）
+    const Entity& entity(int etype) const {
+        auto it = entity_storage.find(etype);
+        if (it != entity_storage.end()) {
+            return it->second;
+        } else {
+            throw std::out_of_range("Invalid entity type.");
+        }
     }
 
-    int estr2dim(const std::string& etype) const;
+    // 添加实体
+    void set_entity(int etype, const Entity& ents) {
+        entity_storage[etype] = ents;
+    }
 
+    // 设置节点坐标
+    void set_nodes(const Node& nodes_) {
+        nodes = nodes_;
+    }
 
-    // face_to_node, edge_to_node, face_to_cell, cell_to_face, cell_to_edge, cell_to_node
-    // node_to_cell, edge_to_cell, face_to_cell
-    // cell_to_edge, cell_to_face, cell_to_node
-    //
+    // 获取节点坐标
+    const Node& get_nodes() const {
+        return nodes;
+    }
 
-   
+    // 获取实体个数
+    size_t number_of_nodes() const {
+        return nodes.size();
+    }
 
-    int estr2dim(const std::string& etype) {
-    if (etype == "node") return 0;
-    if (etype == "edge") return 1;
-    if (etype == "face") return 2;
-    if (etype == "cell") return 3;
-    throw std::invalid_argument("Unknown entity type: " + etype);
-}
+    size_t number_of_cells() const {
+        return entity_storage.count(TD) ? entity_storage.at(TD).size() : 0;
+    }
 
+    size_t number_of_edges() const {
+        return entity_storage.count(1) ? entity_storage.at(1).size() : 0;
+    }
+
+    size_t number_of_faces() const {
+        return entity_storage.count(TD - 1) ? entity_storage.at(TD - 1).size() : 0;
+    }
+
+    size_t number_of_vertices_of_cell() const {
+        if(entity_storage.count(TD) == 0) return 0;
+        return entity_storage.at(TD)[0].size();
+    }
+
+    // 计算边界节点索引（示例）
+    std::vector<int> boundary_node_index() const {
+        // 简单示例：找所有边界面上的节点
+        // 这里只做示例，实际需结合面与单元关系判断边界
+
+        if(entity_storage.count(TD-1) == 0) return {};
+
+        const Entity& faces = entity_storage.at(TD-1);
+        std::set<int> bd_nodes;
+        // 这里假设所有面都是边界面（示例），实际要判断面是否共享两个单元
+        for (const auto& face : faces) {
+            for (int nid : face) {
+                bd_nodes.insert(nid);
+            }
+        }
+
+        return std::vector<int>(bd_nodes.begin(), bd_nodes.end());
+    }
+
+    // 计算边界节点标志向量
+    std::vector<bool> boundary_node_flag() const {
+        std::vector<bool> flags(number_of_nodes(), false);
+        auto bd_nodes = boundary_node_index();
+        for (int nid : bd_nodes) {
+            if(nid >= 0 && static_cast<size_t>(nid) < flags.size())
+                flags[nid] = true;
+        }
+        return flags;
+    }
+
+    // 其它类似功能可以照搬或自己扩展
 
 private:
-    int TD;
-    std::map<int, Tensor> entity_storage;
+    int TD;  // 拓扑维度
+
+    Node nodes;  // 节点坐标列表
+
+    // key: 实体维度，如 0=node(不存?),1=edge,2=face,3=cell
+    std::map<int, Entity> entity_storage;
 };
 
-} // namespace XMFEM
-
-#endif
+#endif // MESH_DS_HPP_
